@@ -1,0 +1,255 @@
+openapi: 3.0.3
+info:
+  title: CUDA Ray Tracer API
+  description: Public REST and WebSocket API for the CUDA-Accelerated Path Tracing Engine.
+  version: 1.0.0
+servers:
+  - url: http://localhost:8080
+    description: Local Native Backend Server
+  - url: https://api.cuda-raytracer.io
+    description: Production Cloud GPU Backend (when provisioned)
+
+paths:
+  /api/v1/health:
+    get:
+      summary: Health Check
+      description: Returns service health status, server uptime, and active rendering backend.
+      responses:
+        '200':
+          description: Service is healthy and operational.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: healthy
+                  service:
+                    type: string
+                    example: cuda-raytracer-api
+                  version:
+                    type: string
+                    example: 1.0.0
+                  uptimeSeconds:
+                    type: number
+                    example: 124.5
+                  backend:
+                    type: string
+                    example: cuda_gpu
+                  cudaAvailable:
+                    type: boolean
+                    example: true
+                  gpuName:
+                    type: string
+                    example: NVIDIA GeForce RTX 3050 Laptop GPU
+
+  /api/v1/gpu:
+    get:
+      summary: GPU Hardware Telemetry
+      description: Returns real-time properties of the host NVIDIA GPU, VRAM allocation, and CUDA compute capability.
+      responses:
+        '200':
+          description: GPU device telemetry.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  cudaAvailable:
+                    type: boolean
+                  gpuName:
+                    type: string
+                  computeCapability:
+                    type: string
+                    example: "8.6"
+                  totalMemoryMB:
+                    type: number
+                    example: 4095.5
+                  freeMemoryMB:
+                    type: number
+                    example: 3820.2
+                  multiprocessors:
+                    type: integer
+                    example: 16
+                  driverVersion:
+                    type: string
+                    example: "13.0"
+                  backend:
+                    type: string
+                    example: cuda_gpu
+                  hardwareAccelerated:
+                    type: boolean
+
+  /api/v1/capabilities:
+    get:
+      summary: Renderer Capabilities
+      description: Returns supported acceleration structures, max bounces, available resolutions, and material models.
+      responses:
+        '200':
+          description: Engine capabilities.
+          content:
+            application/json:
+              schema:
+                type: object
+
+  /api/v1/scenes:
+    get:
+      summary: List Scenes
+      description: Returns all available pre-compiled scene presets.
+      responses:
+        '200':
+          description: List of presets.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  scenes:
+                    type: array
+                    items:
+                      type: object
+
+  /api/v1/scenes/{id}:
+    get:
+      summary: Get Scene Details
+      description: Retrieves primitive counts and geometry breakdown for a scene.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Scene details.
+        '404':
+          description: Scene not found.
+
+  /api/v1/materials:
+    get:
+      summary: Available Materials
+      description: Returns definitions and configurable parameters for all supported PBR materials.
+      responses:
+        '200':
+          description: Material schema list.
+
+  /api/v1/render:
+    post:
+      summary: Start Render Job
+      description: Initiates a new path tracing render job or updates current camera/viewport parameters.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                sceneId:
+                  type: string
+                  example: cornell-box
+                width:
+                  type: integer
+                  example: 1280
+                height:
+                  type: integer
+                  example: 720
+                samplesPerPixel:
+                  type: integer
+                  example: 128
+                maxBounces:
+                  type: integer
+                  example: 10
+                progressive:
+                  type: boolean
+                  example: true
+                camera:
+                  type: object
+                  properties:
+                    position:
+                      type: array
+                      items:
+                        type: number
+                    target:
+                      type: array
+                      items:
+                        type: number
+                    fov:
+                      type: number
+                    aperture:
+                      type: number
+                    focusDist:
+                      type: number
+      responses:
+        '202':
+          description: Render job accepted and queued.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  jobId:
+                    type: string
+                  status:
+                    type: string
+                    example: rendering
+                  width:
+                    type: integer
+                  height:
+                    type: integer
+
+  /api/v1/render/{jobId}:
+    get:
+      summary: Query Render Job Status
+      description: Returns current progress percentage, accumulated samples, and live performance metrics.
+      parameters:
+        - name: jobId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Job status report.
+        '404':
+          description: Job not found.
+
+    delete:
+      summary: Cancel Render Job
+      description: Requests immediate, safe termination of active rendering.
+      parameters:
+        - name: jobId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Job cancelled.
+
+  /api/v1/render/{jobId}/image:
+    get:
+      summary: Retrieve Rendered Frame
+      description: Returns the latest rendered image as JPEG binary data.
+      parameters:
+        - name: jobId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Rendered JPEG image.
+          content:
+            image/jpeg:
+              schema:
+                type: string
+                format: binary
+
+  /api/v1/metrics:
+    get:
+      summary: Live Performance Telemetry
+      description: Returns real-time framerate, kernel execution duration, and ray throughput.
+      responses:
+        '200':
+          description: Performance statistics.
