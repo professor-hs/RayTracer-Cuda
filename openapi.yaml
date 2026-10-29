@@ -230,17 +230,29 @@ paths:
   /api/v1/render/{jobId}/image:
     get:
       summary: Retrieve Rendered Frame
-      description: Returns the latest rendered image as JPEG binary data.
+      description: Returns the latest rendered image as PNG or JPEG binary data.
       parameters:
         - name: jobId
           in: path
           required: true
           schema:
             type: string
+        - name: format
+          in: query
+          required: false
+          description: Desired image format (png or jpeg)
+          schema:
+            type: string
+            enum: [png, jpeg]
+            default: png
       responses:
         '200':
-          description: Rendered JPEG image.
+          description: Rendered image file.
           content:
+            image/png:
+              schema:
+                type: string
+                format: binary
             image/jpeg:
               schema:
                 type: string

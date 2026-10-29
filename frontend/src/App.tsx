@@ -253,6 +253,7 @@ export const App: React.FC = () => {
             isPaused={isPaused}
             onTogglePause={() => setIsPaused(!isPaused)}
             onResetAccumulation={handleResetAccumulation}
+            isConnected={isConnected}
           />
         </main>
 

@@ -77,8 +77,10 @@ export const PerformancePanel: React.FC<PerformancePanelProps> = ({
             <HardDrive className="w-3.5 h-3.5 text-amber-400" />
             <span>VRAM TOTAL</span>
           </div>
-          <p className="text-lg font-bold text-amber-300">{gpuInfo ? `${gpuInfo.totalMemoryMB.toFixed(0)} MB` : '4096 MB'}</p>
-          <p className="text-[9px] text-slate-500">GDDR6 Dedicated</p>
+          <p className="text-lg font-bold text-amber-300">
+            {gpuInfo?.cudaAvailable ? `${gpuInfo.totalMemoryMB.toFixed(0)} MB` : (gpuInfo ? 'N/A (CPU)' : 'Unavailable')}
+          </p>
+          <p className="text-[9px] text-slate-500">Dedicated VRAM</p>
         </div>
       </div>
 
@@ -86,20 +88,32 @@ export const PerformancePanel: React.FC<PerformancePanelProps> = ({
       <div className="bg-slate-900/60 border border-white/5 rounded-lg p-2.5 space-y-1.5 text-[11px]">
         <div className="flex items-center justify-between">
           <span className="text-slate-400">Device:</span>
-          <span className="text-slate-200 font-semibold truncate max-w-[150px]">{gpuInfo?.gpuName || "RTX 3050"}</span>
+          <span className="text-slate-200 font-semibold truncate max-w-[150px]">
+            {gpuInfo?.gpuName || "Unavailable"}
+          </span>
         </div>
         <div className="flex items-center justify-between">
           <span className="text-slate-400">Compute Capability:</span>
-          <span className="text-cyan-400">SM {gpuInfo?.computeCapability || "8.6"}</span>
+          <span className="text-cyan-400">
+            {gpuInfo?.cudaAvailable ? `SM ${gpuInfo.computeCapability}` : "N/A"}
+          </span>
         </div>
         <div className="flex items-center justify-between">
           <span className="text-slate-400">Multiprocessors:</span>
-          <span className="text-slate-300">{gpuInfo?.multiprocessors || 16} SMs</span>
+          <span className="text-slate-300">
+            {gpuInfo?.cudaAvailable ? `${gpuInfo.multiprocessors} SMs` : "N/A"}
+          </span>
         </div>
         <div className="flex items-center justify-between">
           <span className="text-slate-400">Acceleration Backend:</span>
-          <span className="px-1.5 py-0.5 rounded bg-emerald-950/80 text-emerald-400 border border-emerald-800/40 text-[9px] font-bold">
-            {gpuInfo?.backend.toUpperCase() || "CUDA_GPU"}
+          <span className={`px-1.5 py-0.5 rounded text-[9px] font-bold border ${
+            gpuInfo?.cudaAvailable
+              ? 'bg-emerald-950/80 text-emerald-400 border-emerald-800/40'
+              : gpuInfo
+              ? 'bg-amber-950/80 text-amber-400 border-amber-800/40'
+              : 'bg-rose-950/80 text-rose-400 border-rose-800/40'
+          }`}>
+            {gpuInfo ? gpuInfo.backend.toUpperCase() : "OFFLINE"}
           </span>
         </div>
       </div>

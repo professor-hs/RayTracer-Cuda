@@ -1,5 +1,5 @@
 import React, { useRef, useState, useEffect } from 'react';
-import { Camera, Download, Maximize2, RotateCcw, Pause, Play, Sparkles } from 'lucide-react';
+import { Camera, Download, Maximize2, RotateCcw, Pause, Play, Sparkles, WifiOff } from 'lucide-react';
 import { CameraConfig } from '../types';
 
 interface ViewportProps {
@@ -14,6 +14,7 @@ interface ViewportProps {
   isPaused: boolean;
   onTogglePause: () => void;
   onResetAccumulation: () => void;
+  isConnected?: boolean;
 }
 
 export const Viewport: React.FC<ViewportProps> = ({
@@ -27,7 +28,8 @@ export const Viewport: React.FC<ViewportProps> = ({
   onCameraChange,
   isPaused,
   onTogglePause,
-  onResetAccumulation
+  onResetAccumulation,
+  isConnected = true
 }) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const [isDragging, setIsDragging] = useState(false);
@@ -119,6 +121,14 @@ export const Viewport: React.FC<ViewportProps> = ({
           className="max-w-full max-h-full object-contain pointer-events-none transition-opacity duration-75"
           style={{ imageRendering: samples < 4 ? 'pixelated' : 'auto' }}
         />
+      ) : !isConnected ? (
+        <div className="flex flex-col items-center justify-center text-slate-500 space-y-3 p-6 text-center max-w-sm">
+          <WifiOff className="w-10 h-10 text-amber-400/80" />
+          <p className="text-sm font-mono font-semibold text-slate-300">Backend Disconnected</p>
+          <p className="text-xs text-slate-500 leading-relaxed">
+            Click the status pill in the top header to configure your public GPU backend URL, or launch the local server with <code className="text-cyan-400">.\start-local.ps1</code>.
+          </p>
+        </div>
       ) : (
         <div className="flex flex-col items-center justify-center text-slate-500 space-y-3">
           <Sparkles className="w-10 h-10 text-cyan-500 animate-pulse" />

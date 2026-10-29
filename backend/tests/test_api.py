@@ -96,12 +96,49 @@ def test_render_and_image():
     status_data = json.loads(res_status.body)
     assert status_data["currentSamples"] >= 1
 
-    # 3. Image
+    # 3. Image (JPEG)
     res_img = run_coro(srv.get_rendered_image(mock_req))
     assert res_img.status_code == 200
     assert len(res_img.body) > 1000
     assert res_img.headers["content-type"] == "image/jpeg"
     print(f"Render Job Passed: Generated {len(res_img.body)} bytes JPEG image on GPU.")
+
+    # 4. Image (PNG)
+    class MockPngRequest:
+        def __init__(self, job_id):
+            self.path_params = {"jobId": job_id}
+            self.query_params = {"format": "png"}
+    res_png = run_coro(srv.get_rendered_image(MockPngRequest(job_id)))
+    assert res_png.status_code == 200
+    assert res_png.headers["content-type"] == "image/png"
+    print(f"PNG Export Passed: Generated {len(res_png.body)} bytes PNG image on GPU.")
+
+    # 5. Cancellation
+    res_cancel = run_coro(srv.cancel_job(mock_req))
+    assert res_cancel.status_code == 200
+    cancel_data = json.loads(res_cancel.body)
+    assert cancel_data["status"] == "cancelled"
+    print("Job Cancellation Passed.")
+
+    # 6. Non-existent job 404
+    mock_req.path_params = {"jobId": "invalid-job-999"}
+    res_404 = run_coro(srv.get_job_status(mock_req))
+    assert res_404.status_code == 404
+    print("404 Error Handling Passed.")
+
+def test_scene_details():
+    class MockSceneReq:
+        def __init__(self, scene_id):
+            self.path_params = {"id": scene_id}
+    res_valid = run_coro(srv.get_scene_details(MockSceneReq("cornell-box")))
+    assert res_valid.status_code == 200
+    data = json.loads(res_valid.body)
+    assert data["id"] == "cornell-box"
+    assert "primitives" in data
+
+    res_invalid = run_coro(srv.get_scene_details(MockSceneReq("unknown-scene-xyz")))
+    assert res_invalid.status_code == 404
+    print("Scene Details & 404 Validation Passed.")
 
 def test_metrics():
     res = run_coro(srv.get_metrics(None))
@@ -117,7 +154,8 @@ if __name__ == "__main__":
     test_gpu_info()
     test_capabilities()
     test_scenes()
+    test_scene_details()
     test_materials()
     test_render_and_image()
     test_metrics()
-    print("=== ALL 7 BACKEND API TESTS PASSED 100%! ===")
+    print("=== ALL BACKEND API & GPU TESTS PASSED 100%! ===")

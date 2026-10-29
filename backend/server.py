@@ -161,6 +161,28 @@ async def list_materials(request):
         ]
     })
 
+async def _run_job_accumulation(job_id: str, target_samples: int, max_bounces: int):
+    """Background async worker that progressively accumulates samples on GPU until target is reached."""
+    try:
+        while True:
+            job = render_jobs.get(job_id)
+            if not job or job.get("status") != "rendering":
+                break
+            current = engine.total_samples_accumulated
+            if current >= target_samples:
+                job["status"] = "completed"
+                job["completed_at"] = time.time()
+                break
+            step = min(4, target_samples - current)
+            engine.render_frame(samples=step, max_bounces=max_bounces)
+            job["currentSamples"] = engine.total_samples_accumulated
+            await asyncio.sleep(0.005) # Yield to event loop
+    except Exception as e:
+        print(f"[RenderWorker] Error in job {job_id}: {e}")
+        if job_id in render_jobs:
+            render_jobs[job_id]["status"] = "failed"
+            render_jobs[job_id]["last_error"] = str(e)
+
 async def create_render_job(request):
     """POST /api/v1/render: Submits a new render request or updates active scene parameters."""
     try:
@@ -215,9 +237,19 @@ async def create_render_job(request):
     engine.render_frame(samples=1, max_bounces=max_bounces)
     render_jobs[job_id]["currentSamples"] = engine.total_samples_accumulated
 
+    if target_samples > 1:
+        try:
+            loop = asyncio.get_running_loop()
+            loop.create_task(_run_job_accumulation(job_id, target_samples, max_bounces))
+        except RuntimeError:
+            pass
+    else:
+        render_jobs[job_id]["status"] = "completed"
+        render_jobs[job_id]["completed_at"] = time.time()
+
     return JSONResponse({
         "jobId": job_id,
-        "status": "rendering",
+        "status": render_jobs[job_id]["status"],
         "width": width,
         "height": height,
         "sceneId": scene_id,
@@ -266,23 +298,34 @@ async def cancel_job(request):
     return JSONResponse({"jobId": job_id, "status": "cancelled", "message": "Render job stopped safely."})
 
 async def get_rendered_image(request):
-    """GET /api/v1/render/{jobId}/image: Retrieves the current rendered image in JPEG format."""
+    """GET /api/v1/render/{jobId}/image: Retrieves the current rendered image in PNG or JPEG format."""
     job_id = request.path_params.get("jobId")
     if job_id not in render_jobs:
         return JSONResponse({"error": f"Job '{job_id}' not found."}, status_code=404)
 
-    # Encode current RGBA frame to JPEG
-    img = Image.fromarray(engine.h_output_rgba, "RGBA").convert("RGB")
-    buf = io.BytesIO()
-    img.save(buf, format="JPEG", quality=90)
+    query_params = getattr(request, "query_params", {})
+    format_param = query_params.get("format", "jpeg").lower() if hasattr(query_params, "get") else "jpeg"
+    if format_param in ("jpeg", "jpg"):
+        img = Image.fromarray(engine.h_output_rgba, "RGBA").convert("RGB")
+        buf = io.BytesIO()
+        img.save(buf, format="JPEG", quality=90)
+        media_type = "image/jpeg"
+    else:
+        img = Image.fromarray(engine.h_output_rgba, "RGBA")
+        buf = io.BytesIO()
+        img.save(buf, format="PNG")
+        media_type = "image/png"
     buf.seek(0)
 
+    status = engine.get_status()
     return Response(
         content=buf.getvalue(),
-        media_type="image/jpeg",
+        media_type=media_type,
         headers={
             "Cache-Control": "no-cache, no-store, must-revalidate",
-            "X-Samples-Accumulated": str(engine.total_samples_accumulated)
+            "X-Samples-Accumulated": str(engine.total_samples_accumulated),
+            "X-Rendering-Backend": status["backend"],
+            "X-GPU-Name": status["gpuName"]
         }
     )
 
@@ -398,10 +441,11 @@ middleware = [
 app = Starlette(debug=False, routes=routes, middleware=middleware)
 
 if __name__ == "__main__":
+    host = os.environ.get("HOST", "0.0.0.0")
     port = int(os.environ.get("PORT", 8080))
     print(f"==================================================")
     print(f" CUDA Ray Tracer Native API Server running on:")
-    print(f" -> http://127.0.0.1:{port}/api/v1/health")
-    print(f" -> WebSocket: ws://127.0.0.1:{port}/api/v1/ws/render/default")
+    print(f" -> http://{host}:{port}/api/v1/health")
+    print(f" -> WebSocket: ws://{host}:{port}/api/v1/ws/render/default")
     print(f"==================================================")
-    uvicorn.run(app, host="127.0.0.1", port=port, log_level="info")
+    uvicorn.run(app, host=host, port=port, log_level="info")

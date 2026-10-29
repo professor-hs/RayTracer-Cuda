@@ -27,8 +27,8 @@ Tested on an **NVIDIA GeForce RTX 3050 Laptop GPU** delivering **>300 FPS** in i
   - **Dielectric Glass**: Snell's law refraction, internal reflection, and Schlick Fresnel reflectance.
   - **DiffuseLight**: Terminal emissive area lighting (e.g. Cornell Box overhead panel).
 - **Interactive Thin-Lens Camera**: Real-time orbit, pan, dolly zoom, and depth-of-field simulation with configurable aperture radius and focal plane distance.
-- **Public REST & WebSocket API**: Versioned endpoints (`/api/v1`) for scene management, hardware telemetry, and ~60 FPS live frame streaming.
-- **Modern 3D Workstation UI**: Built with React 18, TypeScript, and Tailwind CSS. Features deep navy/charcoal styling, cyan accents, live GPU telemetry, scene tree explorer, and one-click image export.
+- **Public REST & WebSocket API**: Versioned endpoints (`/api/v1`) for scene management, hardware telemetry, asynchronous progressive rendering jobs, lossless PNG/JPEG image export, and ~60 FPS live frame streaming.
+- **Modern 3D Workstation UI**: Built with React 18, TypeScript, and Tailwind CSS. Features deep navy/charcoal styling, cyan accents, live GPU telemetry, scene tree explorer, dynamic backend endpoint switcher, and one-click image export.
 
 ---
 
@@ -117,7 +117,7 @@ Full OpenAPI 3.0 specification available in [`openapi.yaml`](openapi.yaml).
 | `POST` | `/api/v1/render` | Submit new render job or update camera/resolution parameters. |
 | `GET` | `/api/v1/render/{jobId}` | Query render progress, sample count, and live framerate. |
 | `DELETE` | `/api/v1/render/{jobId}` | Safely cancel or pause active rendering. |
-| `GET` | `/api/v1/render/{jobId}/image` | Retrieve current rendered frame as JPEG image. |
+| `GET` | `/api/v1/render/{jobId}/image` | Retrieve rendered frame in PNG or JPEG format (`?format=png` or `?format=jpeg`). |
 | `GET` | `/api/v1/metrics` | Real-time ray throughput, kernel duration, and FPS. |
 | `WS` | `/api/v1/ws/render/{jobId}` | Real-time WebSocket progressive frame stream (~60 FPS). |
 
@@ -131,15 +131,16 @@ curl -X POST http://localhost:8080/api/v1/render \
   -H "Content-Type: application/json" \
   -d '{"sceneId": "cornell-box", "width": 1920, "height": 1080, "samplesPerPixel": 256}'
 
-# Retrieve Rendered Image
-curl http://localhost:8080/api/v1/render/default/image -o frame.jpg
+# Retrieve Lossless PNG Rendered Image
+curl http://localhost:8080/api/v1/render/default/image?format=png -o frame.png
 ```
 
 ---
 
 ## 🌐 Production Deployment
 
-- **Frontend on Netlify**: Automatically builds and deploys via [`netlify.toml`](netlify.toml) with SPA redirects and security headers. Point `VITE_API_BASE_URL` to your GPU server.
+- **Frontend on Netlify**: Automatically builds and deploys via [`netlify.toml`](netlify.toml) with SPA redirects and security headers. Point `VITE_API_BASE_URL` to your remote GPU server in Netlify environment variables.
+- **Backend on Render**: Deploy via [`render.yaml`](render.yaml) blueprint as a public API gateway service.
 - **Backend on Cloud GPU Container**: Deploy using [`Dockerfile`](Dockerfile) and [`docker-compose.yml`](docker-compose.yml) on NVIDIA container-enabled cloud hosts (RunPod, Lambda Labs, AWS EC2 `g5.xlarge`, or GCP).
 
 Detailed guides available in [`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md).
@@ -151,6 +152,11 @@ Detailed guides available in [`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md).
 Run the automated backend test suite:
 ```powershell
 python -u backend/tests/test_api.py
+```
+
+Run the end-to-end live server integration test:
+```powershell
+python -u backend/tests/test_live_server.py
 ```
 
 Build the frontend bundle:

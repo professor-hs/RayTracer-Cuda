@@ -42,21 +42,74 @@ Netlify hosts the static React + TypeScript web application, routing API request
 
 ---
 
-## Part 2: Native GPU Backend Deployment
+## Part 2: Backend & GPU Worker Deployment Architecture
 
-The backend requires an NVIDIA GPU with driver support (CUDA 11.8 - 13.0+) and the NVIDIA Container Toolkit.
+The deployment architecture separates the public API access layer from the compute-intensive CUDA execution environment:
 
-### 2.1 Recommended Cloud GPU Providers
+```
+User's Browser (Desktop / Mobile)
+      |
+      v  HTTPS / WSS
+Netlify-hosted Frontend (CDN Edge)
+      |
+      |  HTTPS REST / WSS
+      +-------------------------------------------+
+      |                                           |
+      v                                           v
+Render Web Service (API Gateway)         Public NVIDIA GPU Worker
+(Handles public requests, CORS, auth)    (RunPod / Lambda Labs / Cloud GPU / On-Prem)
+      |                                           |
+      +---- Forward Render Requests ------------->+
+                                                  |
+                                                  v
+                                      NVIDIA Driver (libcuda.so / nvcuda.dll)
+                                                  |
+                                                  v
+                                      PTX JIT / Ampere+ GPU Hardware
+```
+
+### 2.1 Render Deployment (render.yaml)
+
+Render is supported via the included `render.yaml` blueprint.
+
+#### Important Technical Compatibility Note:
+- Standard Render Web Services run in CPU container environments without physical NVIDIA GPU passthrough.
+- If deployed directly on standard Render, the application starts normally and serves the complete REST API; however, the CUDA engine will detect that no physical NVIDIA GPU device is accessible and report `backend: "cpu_fallback"`, `cudaAvailable: false`.
+- **For genuine CUDA GPU ray tracing**:
+  1. Deploy the rendering worker container on an NVIDIA GPU host (e.g. RunPod, Lambda Labs, AWS `g5.xlarge`, or your GPU workstation).
+  2. In your Render Dashboard, set the environment variable:
+     ```env
+     GPU_WORKER_URL=https://<your-gpu-worker-domain>
+     ```
+  3. Render acts as the secure, high-uptime public API Gateway routing jobs to the GPU worker.
+
+#### Deploying on Render:
+1. Connect your GitHub repository to Render (https://dashboard.render.com).
+2. Click **New > Blueprint** and select this repository (it will automatically read `render.yaml`).
+3. Or create a **New Web Service**:
+   - **Environment**: Python 3
+   - **Build Command**: `pip install --no-cache-dir -r backend/requirements.txt`
+   - **Start Command**: `python -u backend/server.py`
+   - **Health Check Path**: `/api/v1/health`
+4. The service will be available at `https://cuda-raytracer-backend.onrender.com`.
+
+---
+
+## Part 3: Native GPU Worker Deployment
+
+The GPU worker requires an NVIDIA GPU with driver support (CUDA 11.8 - 13.0+) and the NVIDIA Container Toolkit.
+
+### 3.1 Recommended Cloud GPU Providers
 | Provider | Recommended GPU | Approx. Cost | Notes |
 | :--- | :--- | :--- | :--- |
-| **RunPod.io** | RTX 3070 / RTX 4000 / A4000 | ~$0.20 - $0.35 / hr | Excellent price/performance, instant Docker deployment |
+| **RunPod.io** | RTX 3070 / RTX 4000 / A4000 | ~$0.20 - $0.35 / hr | Instant template container, one-click deploy |
 | **Lambda Labs** | RTX 6000 / A10 | ~$0.50 - $0.75 / hr | High reliability, persistent instances |
 | **AWS EC2** | `g5.xlarge` (NVIDIA A10G 24GB) | ~$1.00 / hr | Enterprise VPC & IAM integration |
 | **GCP Compute Engine** | `n1-standard-4` + NVIDIA T4 / L4 | ~$0.60 / hr | Managed Google Cloud environment |
 
 ---
 
-### 2.2 Docker GPU Deployment (RunPod / Cloud VM)
+### 3.2 Docker GPU Deployment (RunPod / Cloud VM)
 
 1. **Verify NVIDIA Drivers & Container Toolkit**:
    ```bash

@@ -5,6 +5,7 @@
 # =============================================================================
 
 import os
+import sys
 import time
 import math
 import ctypes
@@ -92,16 +93,31 @@ class CudaEngine:
     def _init_cuda(self):
         """Initializes CUDA Driver API, creates context on device 0, loads PTX."""
         try:
-            cuda_dll_paths = ["nvcuda.dll", "C:\\Windows\\System32\\nvcuda.dll"]
-            for dll_path in cuda_dll_paths:
-                try:
-                    self.cuda = ctypes.WinDLL(dll_path)
-                    break
-                except Exception:
-                    continue
+            if sys.platform == "win32":
+                cuda_dll_paths = ["nvcuda.dll", "C:\\Windows\\System32\\nvcuda.dll"]
+                for dll_path in cuda_dll_paths:
+                    try:
+                        self.cuda = ctypes.WinDLL(dll_path)
+                        break
+                    except Exception:
+                        continue
+            else:
+                cuda_so_paths = [
+                    "libcuda.so.1",
+                    "libcuda.so",
+                    "/usr/lib/x86_64-linux-gnu/libcuda.so.1",
+                    "/usr/local/cuda/lib64/stubs/libcuda.so",
+                    "/usr/lib/wsl/lib/libcuda.so.1"
+                ]
+                for so_path in cuda_so_paths:
+                    try:
+                        self.cuda = ctypes.CDLL(so_path)
+                        break
+                    except Exception:
+                        continue
 
             if not self.cuda:
-                print("[CudaEngine] WARNING: nvcuda.dll could not be loaded. Running CPU fallback.")
+                print("[CudaEngine] WARNING: CUDA driver library (nvcuda.dll / libcuda.so) could not be loaded. Running CPU fallback.")
                 return
 
             if self.cuda.cuInit(0) != CUDA_SUCCESS:
@@ -205,13 +221,51 @@ class CudaEngine:
         # uint8 RGBA = 4 bytes per pixel
         output_bytes = self.width * self.height * 4
 
-        self.cuda.cuMemAlloc_v2(ctypes.byref(self.d_accum_buffer), accum_bytes)
-        self.cuda.cuMemAlloc_v2(ctypes.byref(self.d_output_rgba), output_bytes)
+        res1 = self.cuda.cuMemAlloc_v2(ctypes.byref(self.d_accum_buffer), accum_bytes)
+        if res1 != CUDA_SUCCESS:
+            print(f"[CudaEngine] Failed to allocate accumulation buffer: code {res1}")
+            self.d_accum_buffer = ctypes.c_uint64(0)
+            return
+
+        res2 = self.cuda.cuMemAlloc_v2(ctypes.byref(self.d_output_rgba), output_bytes)
+        if res2 != CUDA_SUCCESS:
+            print(f"[CudaEngine] Failed to allocate output RGBA buffer: code {res2}")
+            self.d_output_rgba = ctypes.c_uint64(0)
+            return
+
         self.h_output_rgba = np.zeros((self.height, self.width, 4), dtype=np.uint8)
 
         # Single camera struct
         if self.d_camera_params.value == 0:
             self.cuda.cuMemAlloc_v2(ctypes.byref(self.d_camera_params), ctypes.sizeof(CameraParamsStruct))
+
+    def cleanup(self):
+        """Releases all allocated GPU buffers and destroys CUDA context."""
+        if not self.is_cuda_available or not self.cuda:
+            return
+        try:
+            self._ensure_context()
+            for ptr_name in ['d_accum_buffer', 'd_output_rgba', 'd_camera_params', 'd_spheres', 'd_triangles', 'd_bvh_nodes', 'd_materials']:
+                ptr = getattr(self, ptr_name, None)
+                if ptr and ptr.value != 0:
+                    self.cuda.cuMemFree_v2(ptr)
+                    setattr(self, ptr_name, ctypes.c_uint64(0))
+
+            if self.module and self.module.value != 0:
+                self.cuda.cuModuleUnload(self.module)
+                self.module = None
+
+            if self.context and self.context.value != 0:
+                self.cuda.cuCtxDestroy_v2(self.context)
+                self.context = None
+
+            self.is_cuda_available = False
+            print("[CudaEngine] Cleaned up CUDA resources successfully.")
+        except Exception as e:
+            print(f"[CudaEngine] Error during cleanup: {e}")
+
+    def __del__(self):
+        self.cleanup()
 
     def update_resolution(self, width, height):
         """Updates rendering canvas dimensions and reallocates GPU memory."""
