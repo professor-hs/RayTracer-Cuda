@@ -1,0 +1,17 @@
+# Binaries
+**/bin/
+!vendor/bin/premake/
+bin-int/
+x64/
+vendor/
+
+#Assets 
+assets/
+
+# Visual Studio files and folder
+.vs/
+**.sln
+**.vcxproj
+**.vcxproj.filters
+**.vcxproj.user
+**.nvsettings
